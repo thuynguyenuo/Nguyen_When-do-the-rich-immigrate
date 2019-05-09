@@ -13,8 +13,8 @@ endnotes: false
 pagenumber: 1
 bibliography: ../project.bib
 biblio-style: ./resources/ajs.bst
-title: "The Title"
-author:
+title: "When do the rich immigrate?"
+author: Thuy Nguyen
 - affiliation: University of Oregon, Sociology
   name: Aaron Gullickson
 - affiliation: Some Research University
@@ -25,6 +25,11 @@ abstract: This is a test abstract
 ---
 
 # Introduction
+
+Since US Congress created Immigrant Investor Program in 1990, which allows foreign nationals to get the US Green Card by investing at least $500,000 into the US market, there were hundreds of thousands of people immigrated to the US via this channel. This paper analyzes the national distribution of those investor immigrants over years. I compare the national distribution with other macro indicators of those original nations’ development level and well being: GNP, GINI, Freedom index, Corruption index, and Good Country Index. The project aims to explore initial understanding about what macro conditions in the original nations that drive rich people to move to the US.
+
+People with the ability to put down at least $500,000 at one investment supposedly belong to upper classes in all existing societies. I further assume that these people have more information about macro economic and politics than the larger part of the population. The fact that they decide to purchase the US Green Card may be interpreted as a credible signal about their perception and attitude toward the overall domestic situation in the original countries. In other word, by looking at the rich immigration, we may be able to infer some general knowledge about the ‘better-informed’ citizens’ subjective belief toward their national conditions. This inference may turn out to be useful when we want to explore the resilience of authoritarian regimes like China, Russia, Vietnam, etc., where often the case there is too little information available. 
+
 
 # Background
 
