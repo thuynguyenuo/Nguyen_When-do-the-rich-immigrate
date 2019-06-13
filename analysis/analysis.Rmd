@@ -1,7 +1,10 @@
 ---
-title: "Analysis for Project"
-output: 
-  html_document: 
+title: "Macro driving forces of the rich immigration to the USA"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
     fig_height: 6
     fig_width: 9
     toc: yes
@@ -9,11 +12,117 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message= FALSE)
 source("useful_functions.R")
+load("output/analytical_data.RData")
+library(mice)
+library(sandwich)
+library(lmtest)
+library(survey)
+library(texreg)
+library(pander)
+library(Amelia)
+library(ggplot2)
+
 ```
 
 # Introduction
 <a href="#top">Back to top</a>
 
-Use this R Markdown to perform the main analysis for the project. I use this basically as a lab notebook. It contains the main analysis and a variety of sensitivity analysis. The code in this documents serves as a baseline for the eventual tables and figures that will go into the paper. At the same time it will serve as a record of all supplementary analyses performed. 
+
+```{r imputation}
+summary(visa)
+visa.impute <- amelia(visa, m=5, ts="year", cs="state")
+```
+
+
+```{r functions, echo=FALSE}
+
+lm_mi <- function(formula, imp) {
+  b <- se <- R2 <- NULL
+  
+  for(i in 1:imp$m) {
+    #run the model
+    model <- glm(formula, data=imp$imputations[[i]],
+                 family=quasipoisson)
+    #collect the results
+    b <- cbind(b, coef(model))
+    se <- cbind(se, summary(model)$coef[,2])
+    #R2 <- c(R2,summary(model)$r.squared)
+  }
+  
+  #pool the results
+  b.pool <- apply(b, 1, mean)
+  between.var <- apply(b, 1, var)
+  within.var <- apply(se^2, 1, mean)
+  se.pool <- sqrt(within.var+between.var+between.var/imp$m) 
+  t.pool <- b.pool/se.pool 
+  pvalue.pool <- (1-pnorm(abs(t.pool)))*2 
+  coefficients <- data.frame(b.pool, se.pool, t.pool, pvalue.pool)
+  
+  n <- nobs(model)
+  p <- length(model$coefficients)-1
+  #go ahead and calculate BIC.null
+  #bic.null <- n*log(1-r.squared)+p*log(n)
+  
+  #return everything in a list
+  return(list(coef=coefficients,
+              n=n))
+              #r.squared=r.squared,
+              #bic.null=bic.null))
+}
+
+convertModel <- function(model) {
+  coef <- subset(model$coef, !grepl("state", rownames(model$coef)))
+  tr <- createTexreg(
+    coef.names = rownames(coef), 
+    coef = coef$b.pool, 
+    se =coef$se.pool, 
+    pvalues = coef$pvalue.pool,
+    gof.names = c("N"), 
+    gof = c(model$n), 
+    gof.decimal = c(T)
+  )
+}
+```
+
+
+```{r figure}
+ggplot(visa, aes(x=gov_debt, y=eb5))+
+  scale_y_log10()+
+  scale_x_log10()+
+  geom_point(aes(color=state), alpha=0.2)+
+  geom_smooth(method="lm", se=FALSE, aes(color=state, group=state))+
+  #geom_smooth(method="lm", se=FALSE)+
+  labs(x="Countries' macro conditions", y="EB5 Visa to the USA",
+       title= "Trend of the rich immigrated into the US by original countries' marcro conditions")+
+  theme_bw()+
+  guides(color=FALSE)
+```
+
+```{r models}
+model1 <- lm_mi(eb5~air_pollution+state+as.factor(year), visa.impute)
+model2 <- lm_mi(eb5~air_pollution+log(gdp)+state+as.factor(year), visa.impute)
+model3 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+state+as.factor(year), visa.impute)
+model4 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+gov_debt+state+as.factor(year), visa.impute)
+model5 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+gov_debt+transparency+state+as.factor(year), visa.impute)
+model6 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+gov_debt+transparency+gini+state+as.factor(year), visa.impute)
+
+screenreg(lapply(list(model1, model2, model3, model4, model5, model6), convertModel), digits=3)
+
+texreg(lapply(list(model1, model2, model3,model4, model5, model6), convertModel), digits=2,
+       custom.coef.names = c("Intercept", "air_pollution", "as.factor(year)2011",
+                            "as.factor(year)2012","as.factor(year)2013","as.factor(year)2014","as.factor(year)2015","as.factor(year)2016","as.factor(year)2017",
+                             "log(gdp)", 
+                             "unemploy", "gov_debt","transparency","gini"
+                             ),
+       caption="OLS regression models predicting eb5 visa by environmental, macro economics, and social conditions",
+       caption.above = TRUE)
+```
+
+Because the research question only concerns how macro conditions in orginal countries affect the number of rich people moving out using eb5 pathway, we apply fixed effect for states and years.   
+
+
+
+
+

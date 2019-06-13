@@ -1,42 +1,214 @@
 ---
+title: "When do the rich immigrate to the USA?"
+author: "Thuy Nguyen"
 output:
   pdf_document:
-    citation_package: natbib
-    fig_caption: yes
-    template: ./resources/aog-latex-ms.tex
-  word_document:
-    reference_docx: ./resources/aog_word_style.docx
-fontfamily: mathpazo
-fontsize: 11pt
-anonymous: false
-endnotes: false
-pagenumber: 1
-bibliography: ../project.bib
-biblio-style: ./resources/ajs.bst
-title: "When do the rich immigrate?"
-author: Thuy Nguyen
-- affiliation: University of Oregon, Sociology
-  name: Aaron Gullickson
-- affiliation: Some Research University
-  name: My co-author
-keywords: keywords
-thanks: Thanks to people and stuff
-abstract: This is a test abstract
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    fig_height: 6
+    fig_width: 9
+    toc: yes
+    toc_depth: 4
+  fontsize: 11pt
+  bibliography: ../project.bib
+  biblio-style: ./resources/ajs.bst
+  keywords: eb5, immigration
+  thanks: Thanks to Professor Aaron Gullickson who taught us how to cure fear of messy data. 
+abstract: null
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message= FALSE)
+load("../../analysis/output/analytical_data.RData")
+library(mice)
+library(sandwich)
+library(lmtest)
+library(survey)
+library(texreg)
+library(pander)
+library(Amelia)
+library(ggplot2)
+```
+
 
 # Introduction
 
-Since US Congress created Immigrant Investor Program in 1990, which allows foreign nationals to get the US Green Card by investing at least $500,000 into the US market, there were hundreds of thousands of people immigrated to the US via this channel. This paper analyzes the national distribution of those investor immigrants over years. I compare the national distribution with other macro indicators of those original nations’ development level and well being: GNP, GINI, Freedom index, Corruption index, and Good Country Index. The project aims to explore initial understanding about what macro conditions in the original nations that drive rich people to move to the US.
+Since US Congress created Immigrant Investor Program in 1990, which allows foreign nationals to get the US Green Card by investing at least $500,000 into the US market, there were hundreds of thousands of people immigrated to the US via this channel. The project aims to explore initial understanding about what macro conditions in the original nations that drive rich people to purchase US green card.
+In order to grasp a picture of such macro conditions, I use indicators of macro economic, environment, and social conditions such as: air pollution, gdp index, gini index, unemployment rate, central government debt, and transparency. 
 
-People with the ability to put down at least $500,000 at one investment supposedly belong to upper classes in all existing societies. I further assume that these people have more information about macro economic and politics than the larger part of the population. The fact that they decide to purchase the US Green Card may be interpreted as a credible signal about their perception and attitude toward the overall domestic situation in the original countries. In other word, by looking at the rich immigration, we may be able to infer some general knowledge about the ‘better-informed’ citizens’ subjective belief toward their national conditions. This inference may turn out to be useful when we want to explore the resilience of authoritarian regimes like China, Russia, Vietnam, etc., where often the case there is too little information available. 
 
 
 # Background
 
+The purpose of this project is to explore general trends in macro conditions in the original countries that might serve as "pushing factors" that lead more rich people to seek out better life for themselves and their families by pursuing a US green card. 
+
+People with the ability to put down at least $500,000 at one investment supposedly belong to upper classes in all existing societies. I further assume that these people have more information about macro economic and politics than the larger part of the population. The fact that they decide to purchase the US Green Card may be interpreted as a credible signal about their perception and attitude toward the overall domestic situation in the original countries. 
+
+In other word, by looking at the rich immigration, we may be able to infer some general knowledge about the ‘better-informed’ citizens’ subjective belief toward their national conditions. This inference may turn out to be useful when we want to explore the resilience of authoritarian regimes like China, Russia, Vietnam, Iran, Venezuela, etc., where we don't often have much information available. 
+
 # Data and Methods
+
+I use data from two sources: US Citizenship and Immigration Services (USCIS) and the World Bank's World Development Indicators. 
+
+USCIS reports number of Immigration Invester Visa (eb5 visa) anually by country in their website. Ideally, we want a data set of number of eb5 visa application to USCIS anually; but this kind of data is not available systematically. For this project, I will largely assume that US's immigration policy toward the rich is identical cross countries and is stable over time. 
+
+I draw from World Development Indicators 6 variables to capture general conditions of a country from aspects of environment (air pollutions), social (GINI index, CPIA) and macro economics (GDP, unemployment rate, and central government debt). I treat these indicators as independent variables to explain the variation of eb5 visa. 
+
+(1) PM2.5 air pollution is percent of population exposed to levels exceeding WHO guideline value. 
+(2) Gini index measures the extent to which the distribution of income among individuals or households within an economy deviates from a perfectly equal distribution. Gini index of 0 represents perfect equality, while an index of 100 implies perfect inequality. 
+(3) CPIA transparency, accountability, and corruption in the public sector rating (1=low to 6=high). This index assess the extent to which the executive can be held accountable for its use of funds and for the results of its actions by the electorate and by the legislature and judiciary, and the extent to which public employees within the executive are required to account for administrative decisions, use of resources, and results obtained. 
+(4) Central government debt is percent debt of GDP. Debt is the entire stock of direct government fixed-term contractual obligations to others outstanding on a particular date. 
+(5) Unemployment refers to the share of the labor force that is without work but available for and seeking employment. 
+(6) GDP at purchaser's prices is the sum of gross value added by all resident producers in the economy plus any product taxes and minus any subsidies not included in the value of the products. Data are in constant 2010 U.S. dollars. 
+
+To merge two separate data sets from USCIS and the World Bank, which are different in their ways of naming countries/ territories, I changed the country name in USCIS accordingly to the World Bank's ones. 
+
+Our data set suffers from missing values. Among six chosen indicators, three has close to a thounsand missing values: CPIA, gini, and government debt. However, we do not expect these to vary greatly over a period of 8 years (2010 - 2017). In such case, imputation tool will reasonably take care of the missing values. I use Amelia package to impute values with iteration m=5.
+
+I then run OLS models in R, nesting 6 independent variables one by one. Because the research question only concerns how macro conditions in orginal countries that affect the number of rich people moving out of that country, using eb5 pathway, we apply fixed effect for states and years. 
+
+```{r imputation, include=FALSE}
+visa.impute <- amelia(visa, m=5, ts="year", cs="state")
+```
+
+```{r functions, include=FALSE}
+
+    lm_mi <- function(formula, imp) {
+  b <- se <- R2 <- NULL
+  
+  for(i in 1:imp$m) {
+    #run the model
+    model <- glm(formula, data=imp$imputations[[i]],
+                 family=quasipoisson)
+    #collect the results
+    b <- cbind(b, coef(model))
+    se <- cbind(se, summary(model)$coef[,2])
+  }
+  #pool the results
+  b.pool <- apply(b, 1, mean)
+  between.var <- apply(b, 1, var)
+  within.var <- apply(se^2, 1, mean)
+  se.pool <- sqrt(within.var+between.var+between.var/imp$m) 
+  t.pool <- b.pool/se.pool 
+  pvalue.pool <- (1-pnorm(abs(t.pool)))*2 
+  coefficients <- data.frame(b.pool, se.pool, t.pool, pvalue.pool)
+  
+  n <- nobs(model)
+  p <- length(model$coefficients)-1
+  return(list(coef=coefficients,
+              n=n))
+}
+
+convertModel <- function(model) {
+  coef <- subset(model$coef, !grepl("state", rownames(model$coef)))
+  tr <- createTexreg(
+    coef.names = rownames(coef), 
+    coef = coef$b.pool, 
+    se =coef$se.pool, 
+    pvalues = coef$pvalue.pool,
+    gof.names = c("N"), 
+    gof = c(model$n), 
+    gof.decimal = c(T)
+  )
+}
+```
 
 # Results
 
-# Conclusions
+```{r figure, echo=FALSE}
+ggplot(visa, aes(x=air_pollution, y=eb5))+
+  scale_y_log10()+
+  scale_x_log10()+
+  geom_point(aes(color=state), alpha=0.2)+
+  geom_smooth(method="lm", se=FALSE, aes(color=state, group=state))+
+  geom_smooth(method="lm", se=FALSE)+
+  labs(x="Percent of population exposed to exceeding WHO guideline level", y="Number of issued EB5 Visa to the US",
+       title= "Environmental condition as a driving force behind immigrant investor")+
+  theme_bw()+
+  guides(color=FALSE)
+
+ggplot(visa, aes(x=gdp, y=eb5))+
+  scale_y_log10()+
+  scale_x_log10()+
+  geom_point(aes(color=state), alpha=0.2)+
+  geom_smooth(method="lm", se=FALSE, aes(color=state, group=state))+
+  geom_smooth(method="lm", se=FALSE)+
+  labs(x="(log)GDP", y="Number of issued EB5 Visa to the US",
+       title= "Economic condition as a driving force behind immigrant investor")+
+  theme_bw()+
+  guides(color=FALSE)
+```
+
+Two graphs above illustrate how air pollution and gdp are associated with eb5 visa. Both values in x and y axises are logged. The colors represent states, where each has their own best fit line. In the graph of prediciting eb5 visa by air pollution, there's no clear trend. But in the second graph that predicts eb5 visa by gdp, we see that countries with bigger gdp are also those who have more eb5 issued.  
+
+Some special cases with small size of gdp with sharp increase in the number of eb5 issued like Taiwan, Hongkong, Vietnam will need closer analysis in the future research. 
+
+
+```{r models, echo=FALSE}
+model1 <- lm_mi(eb5~air_pollution+state+as.factor(year), visa.impute)
+model2 <- lm_mi(eb5~air_pollution+log(gdp)+state+as.factor(year), visa.impute)
+model3 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+state+as.factor(year), visa.impute)
+model4 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+gov_debt+state+as.factor(year), visa.impute)
+model5 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+gov_debt+transparency+state+as.factor(year), visa.impute)
+model6 <- lm_mi(eb5~air_pollution+log(gdp)+unemploy+gov_debt+transparency+gini+state+as.factor(year), visa.impute)
+```
+
+```{r texreg, results="asis", echo = FALSE}
+texreg(lapply(list(model1, model2, model3,model4, model5, model6), convertModel), digits=3,
+       custom.coef.names = c("Intercept", "air_pollution", "as.factor(year)2011",
+                            "as.factor(year)2012","as.factor(year)2013","as.factor(year)2014",
+                            "as.factor(year)2015","as.factor(year)2016","as.factor(year)2017",
+                             "log(gdp)", 
+                             "unemploy", "gov_debt","transparency","gini"
+                             ),
+       caption="OLS regression models predicting eb5 visa by environmental, macro economics, and social conditions",
+       caption.above = TRUE)
+```
+
+Table 1 is OLS regression models predicting eb5 visa by environmental, macro economics, and social conditions. I group 6 indicators into three categories:
+
+### Group condition 1: Environment condition (air pollution)
+
+I expect that worse environment condition will stimulate people, who are capable in terms of material, to move out. However, the result is not in favor of such expectation. On the contrary, the model predicts that, on average, 1 more percent of the population exposed to the exceeding WHO guideline value is associated with .004 less eb5 visa issued. 
+
+This calls into question of more indicator, not just air pollution, to capture the condition of the evironment. Those can be: water quality and quantity, more detail data set of air pollution in city with high density of rich people reside. 
+
+### Group condition 2: Macro economy condition (gdp, unemployment, central government debt)
+
+I expect that worse marco economic condition in the original countries will lead to more rich people seeking US green card. But the data shows that both better gdp and worse employment lead to the same direction of less visa issued. 
+
+gdp effect: The model predicts that, on average, 1 percent increases in gdp of a country is associated with .062. 
+
+unemployment effect: we don't observe any likage between unemployment rate and the number of visa issued in model 3. It shows somem mild effect as result of incorporating central government debt factor, but disappreas when we control for gini and transparency index. 
+
+central government debt:1 percent increases in  unemployment rate... less eb5 visa issued to that country, respectively. 
+
+### Group condition 3: Social conditions (CPIA transparency, accountability, and corruption in the public sector rating and Gini index)
+
+I expect that worse social conditions would worry people, those who are able will choose to opt out. Instead,  the model predicts that, moving up one point higher in the ordinal ladder of transparency is linked to .027 more visa issued, where as each point increases gini index is associated with .001 morevisa, on average. 
+
+Overall, the independent variables, i.e. air pollution, gdp, government debt, unemployment, transparency, gini, have very weak explanatory power to help understand the dependent varibale, i.e number of immigration investors to the US. 
+
+
+# Conclusion
+
+The goal of this project is to explore some general trends in macro conditions that driving rich people out of their country, purchasinf a US green card using investment immigration visa (eb5) program. 
+
+Because of many limitations in the data set, I am not confident in drawing any concrete conclusion regarding how much the macro condition in the original country can explain the variation of the number of its rich people afford at least US$500,000 to get a US green card. However, the initial findings allow me to better plan the way ahead to proceed in finding answer for the research question of interested. 
+
+# Future work
+
+I start this project with a assumption that US does not have discriminatory policy toward the rich immigration in different country and over time. But the result shows that countries with improvement (higher gini, transparency) earn more eb5 visas, where as countries with worse condition (unemployment, air pollution) could purchase less eb5 visas. This suggests that we have to relax such assumption. Even more, we need to seriously take into account the changes in US immigration policy.
+
+Second, a complete data set of visa applications of immigration investors by country is needed to further proceed this project. The variation of number of applications would capture better the sensitiveness of the rich people about their original countries' macro changes. Only then, we would be able to assess how much the macro conditions 'push' the rich out of the country. 
 
 # References
+
+World Bank national accounts data, and OECD National Accounts data files.
+Brauer, M. et al. 2017, for the Global Burden of Disease Study 2017.
+World Bank, Development Research Group. Data are based on primary household survey data obtained from government statistical agencies and World Bank country departments. For more information and methodology, please see PovcalNet (http://iresearch.worldbank.org/PovcalNet/index.htm).
+World Bank Group, CPIA database (http://www.worldbank.org/ida).
+International Monetary Fund, Government Finance Statistics Yearbook and data files, and World Bank and OECD GDP estimates.
+International Labour Organization, ILOSTAT database. Data retrieved in April 2019.
+US Citizenship and Immigration Services (USCIS), https://www.uscis.gov/
